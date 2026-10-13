@@ -1,6 +1,6 @@
 import os
 import re
-
+from PIL import Image
 import easyocr
 import fitz  # PyMuPDF
 
@@ -301,7 +301,35 @@ def allowed_file(filename):
         in ALLOWED_EXTENSIONS
     )
 
+def validate_file_content(file, extension):
+    """Check whether the uploaded file matches its extension."""
 
+    try:
+        file.stream.seek(0)
+
+        if extension == "pdf":
+            header = file.stream.read(1024)
+            return b"%PDF-" in header
+
+        image = Image.open(file.stream)
+
+        expected_formats = {
+            "png": "PNG",
+            "jpg": "JPEG",
+            "jpeg": "JPEG",
+        }
+
+        if image.format != expected_formats.get(extension):
+            return False
+
+        image.verify()
+        return True
+
+    except Exception:
+        return False
+
+    finally:
+        file.stream.seek(0)
 # Extract text from an image
 def extract_text_from_image(filepath):
     results = reader.readtext(filepath, detail=0)
@@ -612,7 +640,7 @@ def check_document():
         )
 
     file = request.files["document"]
-
+    
     if file.filename == "":
         return render_template_string(
             PAGE,
@@ -625,13 +653,25 @@ def check_document():
 
     if not allowed_file(file.filename):
         return render_template_string(
-            PAGE,
-            extracted_text=None,
-            checks=None,
-            details=None,
-            warnings=None,
-            error="Upload a PDF, PNG, JPG, or JPEG file.",
-        )
+        PAGE,
+        extracted_text=None,
+        checks=None,
+        details=None,
+        warnings=None,
+        error="Unsupported file type. Upload a PDF, PNG, JPG, or JPEG file.",
+    )
+
+    extension = file.filename.rsplit(".", 1)[1].lower()
+
+    if not validate_file_content(file, extension):
+        return render_template_string(
+        PAGE,
+        extracted_text=None,
+        checks=None,
+        details=None,
+        warnings=None,
+        error="Invalid file content. Please upload a valid PDF or image.",
+    )
 
     filename = secure_filename(file.filename)
 
